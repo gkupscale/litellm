@@ -31,6 +31,23 @@ local_cache_obj: Final = Cache(type=LiteLLMCacheType.LOCAL)  # only used for cal
 
 MAX_PAGINATION_PAGES: Final = 100  # Reasonable upper bound for pagination
 
+_UNSUPPORTED_EXPLICIT_CACHING_MODELS: set[str] = {
+    "gemini-4-argon",
+    "models/gemini-4-argon",
+}
+
+
+def _supports_explicit_caching(model: str) -> bool:
+    clean_model = model.split("/", 1)[1] if "/" in model else model
+    if (
+        model in _UNSUPPORTED_EXPLICIT_CACHING_MODELS
+        or clean_model in _UNSUPPORTED_EXPLICIT_CACHING_MODELS
+    ):
+        return False
+    if "gemini-4" in clean_model:
+        return False
+    return True
+
 
 class ContextCachingEndpoints(VertexBase):
     """
@@ -304,6 +321,13 @@ class ContextCachingEndpoints(VertexBase):
         if cached_content is not None:
             return messages, optional_params, cached_content
 
+        if not _supports_explicit_caching(model):
+            verbose_logger.debug(
+                "Vertex AI context caching: model '%s' does not support explicit caching. Skipping context caching.",
+                model,
+            )
+            return messages, optional_params, None
+
         cached_messages, non_cached_messages = separate_cached_messages(messages=messages)
 
         if len(cached_messages) == 0:
@@ -418,11 +442,20 @@ class ContextCachingEndpoints(VertexBase):
                 json=cached_content_request_body,
             )
             response.raise_for_status()
-        except httpx.HTTPStatusError as err:
-            error_code: Final = err.response.status_code
-            raise VertexAIError(status_code=error_code, message=err.response.text)
-        except httpx.TimeoutException:
-            raise VertexAIError(status_code=408, message="Timeout error occurred.")
+        except Exception as err:
+            err_msg = getattr(getattr(err, "response", None), "text", None) or str(err)
+            if "Explicit caching is not supported" in err_msg:
+                _UNSUPPORTED_EXPLICIT_CACHING_MODELS.add(model)
+            if tools is not None:
+                optional_params["tools"] = tools
+            if tool_choice is not None:
+                optional_params["tool_choice"] = tool_choice
+            verbose_logger.warning(
+                "Vertex AI context caching failed for model '%s' (%s). Falling back to non-cached request.",
+                model,
+                err_msg,
+            )
+            return messages, optional_params, None
 
         raw_response_cached: Final = response.json()
         cached_content_response_obj: Final = VertexAICachedContentResponseObject(
@@ -463,6 +496,13 @@ class ContextCachingEndpoints(VertexBase):
         """
         if cached_content is not None:
             return messages, optional_params, cached_content
+
+        if not _supports_explicit_caching(model):
+            verbose_logger.debug(
+                "Vertex AI context caching: model '%s' does not support explicit caching. Skipping context caching.",
+                model,
+            )
+            return messages, optional_params, None
 
         cached_messages, non_cached_messages = separate_cached_messages(messages=messages)
 
@@ -574,11 +614,20 @@ class ContextCachingEndpoints(VertexBase):
                 json=cached_content_request_body,
             )
             response.raise_for_status()
-        except httpx.HTTPStatusError as err:
-            error_code: Final = err.response.status_code
-            raise VertexAIError(status_code=error_code, message=err.response.text)
-        except httpx.TimeoutException:
-            raise VertexAIError(status_code=408, message="Timeout error occurred.")
+        except Exception as err:
+            err_msg = getattr(getattr(err, "response", None), "text", None) or str(err)
+            if "Explicit caching is not supported" in err_msg:
+                _UNSUPPORTED_EXPLICIT_CACHING_MODELS.add(model)
+            if tools is not None:
+                optional_params["tools"] = tools
+            if tool_choice is not None:
+                optional_params["tool_choice"] = tool_choice
+            verbose_logger.warning(
+                "Vertex AI context caching failed for model '%s' (%s). Falling back to non-cached request.",
+                model,
+                err_msg,
+            )
+            return messages, optional_params, None
 
         raw_response_cached: Final = response.json()
         cached_content_response_obj: Final = VertexAICachedContentResponseObject(

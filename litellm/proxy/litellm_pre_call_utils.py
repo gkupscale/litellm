@@ -2777,25 +2777,39 @@ def _update_model_if_key_alias_exists(
     user_api_key_dict: UserAPIKeyAuth,
 ) -> None:
     """
-    Update the model if the key alias exists
-
-    If an alias map has been set on a key, then we want to make the request with the model the key alias is pointing to
-
-    eg.
-        - user calls `modelAlias`
-        - key.aliases = {
-            "modelAlias": "xai/grok-4-fast-non-reasoning"
-        }
-        - requested_model = "xai/grok-4-fast-non-reasoning"
+    Update the model if the key alias exists, supporting:
+    - Recording pre-alias frontend model in data metadata
+    - Tier 1: Exact Match
+    - Tier 2: Longest Wildcard Prefix Match (e.g. claude-* -> model)
+    - Tier 3: Catch-All '*'
+    - Popping api_key so client virtual key does not override backend credentials
     """
     _model: Final = data.get("model")
+    if _model:
+        for _meta_key in ("metadata", "litellm_metadata"):
+            if isinstance(data.get(_meta_key), dict):
+                data[_meta_key].setdefault("frontend_model", _model)
+
     if (
         _model
         and user_api_key_dict.aliases
         and isinstance(user_api_key_dict.aliases, dict)
-        and _model in user_api_key_dict.aliases
     ):
-        data["model"] = user_api_key_dict.aliases[_model]
+        if _model in user_api_key_dict.aliases:
+            data["model"] = user_api_key_dict.aliases[_model]
+        else:
+            matching_wildcards = [
+                (pat[:-1], target)
+                for pat, target in user_api_key_dict.aliases.items()
+                if isinstance(pat, str) and pat.endswith("*") and pat != "*" and _model.startswith(pat[:-1])
+            ]
+            if matching_wildcards:
+                matching_wildcards.sort(key=lambda x: len(x[0]), reverse=True)
+                data["model"] = matching_wildcards[0][1]
+            elif "*" in user_api_key_dict.aliases:
+                data["model"] = user_api_key_dict.aliases["*"]
+
+    data.pop("api_key", None)
 
 
 def _apply_credential_overrides_from_model_config(

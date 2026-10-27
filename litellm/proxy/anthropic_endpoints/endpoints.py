@@ -387,3 +387,16 @@ async def event_logging_batch(
     It exists to prevent 404 errors from Claude Code clients that send telemetry.
     """
     return {"status": "ok"}
+
+
+@router.api_route(
+    "/api/hello",
+    methods=["GET", "HEAD"],
+    tags=["[beta] Anthropic Event Logging"],
+)
+async def api_hello():
+    """
+    Stubbed endpoint for client connectivity healthchecks (HEAD/GET /api/hello).
+    Prevents 404 errors from clients checking API reachability.
+    """
+    return {"status": "ok"}
