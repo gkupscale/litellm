@@ -1551,11 +1551,16 @@ class PrometheusLogger(CustomLogger):
             f"inside track_prometheus_metrics, model {model}, response_cost {response_cost}, tokens_used {tokens_used}, end_user_id {end_user_id}, user_api_key {user_api_key}"
         )
 
+        frontend_model: Final = (
+            standard_logging_payload.get("metadata", {}).get("frontend_model")
+            or standard_logging_payload.get("model_group")
+        )
+
         enum_values: Final = UserAPIKeyLabelValues(
             end_user=end_user_id,
             hashed_api_key=user_api_key,
             api_key_alias=user_api_key_alias,
-            requested_model=standard_logging_payload["model_group"],
+            requested_model=frontend_model,
             model_group=standard_logging_payload["model_group"],
             team=user_api_team,
             team_alias=user_api_team_alias,
@@ -3107,12 +3112,17 @@ class PrometheusLogger(CustomLogger):
             # On LiteLLM-side rejects (no deployment picked), route request_kwargs["model"]
             # into requested_model and leave deployment-scoped labels empty.
             deployment_selected: Final = bool(model_id) and not _litellm_params.get(PROXY_REJECTED_BEFORE_ROUTING_KEY)
+            fe_model = (
+                _metadata.get("frontend_model")
+                or (_litellm_params.get("litellm_metadata") or {}).get("frontend_model")
+                or (_litellm_params.get("metadata") or {}).get("frontend_model")
+            )
             if deployment_selected:
                 label_litellm_model_name = litellm_model_name
                 label_model_id = model_id
                 label_api_base = api_base
                 label_api_provider = llm_provider
-                label_requested_model = model_group or litellm_model_name
+                label_requested_model = fe_model or model_group or litellm_model_name
                 label_model_group = model_group
             else:
                 label_litellm_model_name = ""
@@ -3120,7 +3130,7 @@ class PrometheusLogger(CustomLogger):
                 label_api_base = ""
                 label_api_provider = ""
                 label_requested_model = (
-                    _bounded_requested_model_label(litellm_model_name or model_group, router_originated=True) or ""
+                    _bounded_requested_model_label(fe_model or litellm_model_name or model_group, router_originated=True) or ""
                 )
                 label_model_group = _bounded_requested_model_label(model_group, router_originated=True)
 

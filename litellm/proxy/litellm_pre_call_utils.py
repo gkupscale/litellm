@@ -2721,6 +2721,11 @@ def _update_model_if_team_alias_exists(
     exist (e.g. a gateway-level model group shared with the team).
     """
     _model: Final = data.get("model")
+    if _model:
+        for _meta_key in ("metadata", "litellm_metadata"):
+            if not isinstance(data.get(_meta_key), dict):
+                data[_meta_key] = {}
+            data[_meta_key].setdefault("frontend_model", _model)
     if not _model or not user_api_key_dict.team_model_aliases or _model not in user_api_key_dict.team_model_aliases:
         return
 
@@ -2787,8 +2792,9 @@ def _update_model_if_key_alias_exists(
     _model: Final = data.get("model")
     if _model:
         for _meta_key in ("metadata", "litellm_metadata"):
-            if isinstance(data.get(_meta_key), dict):
-                data[_meta_key].setdefault("frontend_model", _model)
+            if not isinstance(data.get(_meta_key), dict):
+                data[_meta_key] = {}
+            data[_meta_key].setdefault("frontend_model", _model)
 
     if (
         _model

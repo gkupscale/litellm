@@ -228,6 +228,7 @@ def _get_spend_logs_metadata(
             max_retries=None,
             attempted_fallbacks=None,
             original_model_group=None,
+            frontend_model=None,
             cost_breakdown=None,
             compression_savings=None,
             autorouter_savings=autorouter_savings,
